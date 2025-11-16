@@ -7,12 +7,15 @@
 #include "esp_log.h"
 #include "driver/twai.h"
 #include "driver/i2c.h"
+#include "esp_check.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "board_i2c.h"
 #include <string.h>
 
 static const char *TAG = "CAN_TX";
+static const uint32_t CAN_TX_TIMEOUT_MS = 20;
+static bool s_can_recovery_in_progress = false;
 
 // CAN/TWAI configuration
 #ifndef CONFIG_EXAMPLE_TX_GPIO_NUM
@@ -33,19 +36,28 @@ static TaskHandle_t can_tx_task_handle = NULL;
 /**
  * @brief Enable CAN transceiver on Waveshare board
  */
+static esp_err_t i2c_write_with_recovery(uint8_t addr, uint8_t data)
+{
+    esp_err_t ret = i2c_master_write_to_device(I2C_MASTER_NUM, addr, &data, 1, I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+    if (ret == ESP_OK) {
+        return ret;
+    }
+    ESP_LOGW(TAG, "I2C write to 0x%02X failed: %s. Attempting bus recovery.", addr, esp_err_to_name(ret));
+    ESP_RETURN_ON_ERROR(board_i2c_recover(), TAG, "Unable to recover I2C bus");
+    return i2c_master_write_to_device(I2C_MASTER_NUM, addr, &data, 1, I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+}
+
 static esp_err_t enable_can_transceiver(void) {
     // When USB_SEL is HIGH, it enables FSUSB42UMX chip and connects CAN_TX/CAN_RX
     uint8_t write_buf = 0x01;
-    esp_err_t ret = i2c_master_write_to_device(I2C_MASTER_NUM, 0x24, &write_buf, 1, 
-                                              I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+    esp_err_t ret = i2c_write_with_recovery(0x24, write_buf);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write to I2C device 0x24");
         return ret;
     }
     
     write_buf = 0x20;
-    ret = i2c_master_write_to_device(I2C_MASTER_NUM, 0x38, &write_buf, 1, 
-                                    I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+    ret = i2c_write_with_recovery(0x38, write_buf);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write to I2C device 0x38");
         return ret;
@@ -108,9 +120,10 @@ esp_err_t can_init(void) {
     ESP_LOGI(TAG, "TWAI driver started");
 
     // Configure alerts
-    uint32_t alerts = TWAI_ALERT_TX_IDLE | TWAI_ALERT_TX_SUCCESS | 
-                     TWAI_ALERT_TX_FAILED | TWAI_ALERT_ERR_PASS | 
-                     TWAI_ALERT_BUS_ERROR;
+     uint32_t alerts = TWAI_ALERT_TX_IDLE | TWAI_ALERT_TX_SUCCESS | 
+                      TWAI_ALERT_TX_FAILED | TWAI_ALERT_ERR_PASS | 
+                      TWAI_ALERT_BUS_ERROR | TWAI_ALERT_BUS_OFF |
+                      TWAI_ALERT_BUS_RECOVERED;
     ret = twai_reconfigure_alerts(alerts, NULL);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to reconfigure alerts");
@@ -155,7 +168,7 @@ esp_err_t can_transmit_temperature(uint8_t channel, thermocouple_data_t *data) {
     memcpy(&message.data[4], &data->temperature, sizeof(float));
 
     // Transmit message
-    esp_err_t ret = twai_transmit(&message, pdMS_TO_TICKS(100));
+    esp_err_t ret = twai_transmit(&message, pdMS_TO_TICKS(CAN_TX_TIMEOUT_MS));
     if (ret == ESP_OK) {
         ESP_LOGD(TAG, "CH%d: %.2f°C transmitted", channel, data->temperature);
     } else if (ret == ESP_ERR_TIMEOUT) {
@@ -179,12 +192,22 @@ esp_err_t can_transmit_all_temperatures(thermocouple_data_t *data, uint8_t num_c
     }
 
     // Transmit each channel
+    int consecutive_failures = 0;
     for (uint8_t i = 0; i < num_channels; i++) {
-        can_transmit_temperature(i, &data[i]);
+        esp_err_t ret = can_transmit_temperature(i, &data[i]);
+        if (ret != ESP_OK) {
+            consecutive_failures++;
+            if (consecutive_failures >= 3) {
+                ESP_LOGW(TAG, "Aborting CAN batch after %d consecutive failures", consecutive_failures);
+                return ret;
+            }
+        } else {
+            consecutive_failures = 0;
+        }
         vTaskDelay(pdMS_TO_TICKS(10));  // Small delay between messages
     }
 
-    return ESP_OK;
+    return (consecutive_failures == 0) ? ESP_OK : ESP_FAIL;
 }
 
 esp_err_t can_transmit_status(void) {
@@ -238,13 +261,32 @@ static void can_tx_task(void *arg) {
 
         // Check for alerts
         uint32_t alerts;
-        twai_read_alerts(&alerts, pdMS_TO_TICKS(10));
-        
-        if (alerts & TWAI_ALERT_TX_FAILED) {
-            ESP_LOGW(TAG, "CAN TX failed alert");
-        }
-        if (alerts & TWAI_ALERT_BUS_ERROR) {
-            ESP_LOGW(TAG, "CAN bus error alert");
+        if (twai_read_alerts(&alerts, pdMS_TO_TICKS(10)) == ESP_OK && alerts != 0) {
+            if (alerts & TWAI_ALERT_TX_FAILED) {
+                ESP_LOGW(TAG, "CAN TX failed alert");
+            }
+            if (alerts & TWAI_ALERT_BUS_ERROR) {
+                ESP_LOGW(TAG, "CAN bus error alert");
+            }
+            if (alerts & TWAI_ALERT_BUS_OFF) {
+                ESP_LOGE(TAG, "CAN bus-off detected, initiating recovery");
+                if (!s_can_recovery_in_progress) {
+                    esp_err_t ret = twai_initiate_recovery();
+                    if (ret == ESP_OK) {
+                        s_can_recovery_in_progress = true;
+                    } else {
+                        ESP_LOGE(TAG, "Failed to initiate CAN recovery: %s", esp_err_to_name(ret));
+                    }
+                }
+            }
+            if (alerts & TWAI_ALERT_BUS_RECOVERED) {
+                ESP_LOGI(TAG, "CAN bus recovered");
+                s_can_recovery_in_progress = false;
+                esp_err_t ret = twai_start();
+                if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to restart TWAI driver: %s", esp_err_to_name(ret));
+                }
+            }
         }
 
         vTaskDelay(pdMS_TO_TICKS(CAN_TX_RATE_MS));

@@ -13,6 +13,26 @@ IRAM_ATTR static bool rgb_lcd_on_vsync_event(esp_lcd_panel_handle_t panel, const
 }
 
 #if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_GT911
+static uint8_t s_touch_dev_addr = ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS;
+
+static uint8_t detect_gt911_address(void)
+{
+    const uint8_t candidates[] = {
+        ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS,
+        ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS_BACKUP,
+    };
+
+    for (size_t i = 0; i < (sizeof(candidates) / sizeof(candidates[0])); i++) {
+        if (board_i2c_probe_device(candidates[i]) == ESP_OK) {
+            ESP_LOGI(TAG, "GT911 detected at 0x%02X", candidates[i]);
+            return candidates[i];
+        }
+    }
+
+    ESP_LOGW(TAG, "GT911 not detected on known addresses, falling back to 0x%02X", candidates[0]);
+    return candidates[0];
+}
+
 // GPIO initialization
 void gpio_init(void)
 {
@@ -112,13 +132,15 @@ esp_err_t waveshare_esp32_s3_rgb_lcd_init()
 #if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_GT911
     ESP_LOGI(TAG, "Initialize I2C bus"); // Log the initialization of the I2C bus
     ESP_ERROR_CHECK(board_i2c_init());
+    s_touch_dev_addr = detect_gt911_address();
     ESP_LOGI(TAG, "Initialize GPIO"); // Log GPIO initialization
     gpio_init(); // Initialize GPIO pins
     ESP_LOGI(TAG, "Initialize Touch LCD"); // Log touch LCD initialization
     waveshare_esp32_s3_touch_reset(); // Reset the touch panel
 
     esp_lcd_panel_io_handle_t tp_io_handle = NULL; // Declare a handle for touch panel I/O
-    const esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG(); // Configure I2C for GT911 touch controller
+    esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG(); // Configure I2C for GT911 touch controller
+    tp_io_config.dev_addr = s_touch_dev_addr;
 
     ESP_LOGI(TAG, "Initialize I2C panel IO"); // Log I2C panel I/O initialization
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)I2C_MASTER_NUM, &tp_io_config, &tp_io_handle)); // Create new I2C panel I/O
@@ -244,3 +266,19 @@ void example_lvgl_demo_ui() // LVGL demo UI initialization function
 
     lv_timer_create(add_data, 100, chart); // Create a timer to add new data every 100ms 
 }
+
+#if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_GT911
+esp_err_t waveshare_touch_recover(void)
+{
+    ESP_LOGW(TAG, "Attempting GT911/I2C bus recovery");
+    esp_err_t ret = board_i2c_recover();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to recover I2C bus: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    gpio_init();
+    waveshare_esp32_s3_touch_reset();
+    s_touch_dev_addr = detect_gt911_address();
+    return ESP_OK;
+}
+#endif
