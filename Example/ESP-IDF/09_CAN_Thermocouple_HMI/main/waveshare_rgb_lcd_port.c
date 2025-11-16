@@ -209,65 +209,48 @@ esp_err_t wavesahre_rgb_lcd_bl_off()
 }
 
 /******************************* Example code **************************************/
-static void draw_event_cb(lv_event_t *e) // Draw event callback function 
+// Display a static study screen without continuous updates
+void example_lvgl_demo_ui(void)
 {
-    lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e); // Get the draw part descriptor 
-    if (dsc->part == LV_PART_ITEMS)
-    {                                                                 // If drawing chart items 
-        lv_obj_t *obj = lv_event_get_target(e);                       // Get the target object of the event 
-        lv_chart_series_t *ser = lv_chart_get_series_next(obj, NULL); // Get the series of the chart 
-        uint32_t cnt = lv_chart_get_point_count(obj);                 // Get the number of points in the chart 
-        /* Make older values more transparent */
-        dsc->rect_dsc->bg_opa = (LV_OPA_COVER * dsc->id) / (cnt - 1); // Set opacity based on the index 
+    lv_obj_t *scr = lv_scr_act();
 
-        /* Make smaller values blue, higher values red  */
-        lv_coord_t *x_array = lv_chart_get_x_array(obj, ser); // Get the X-axis array 
-        lv_coord_t *y_array = lv_chart_get_y_array(obj, ser); // Get the Y-axis array 
-        /* dsc->id is the drawing order, but we need the index of the point being drawn dsc->id  */
-        uint32_t start_point = lv_chart_get_x_start_point(obj, ser); // Get the start point of the chart 
-        uint32_t p_act = (start_point + dsc->id) % cnt;              // Calculate the actual index based on the start point 
-        lv_opa_t x_opa = (x_array[p_act] * LV_OPA_50) / 200;         // Calculate X-axis opacity 
-        lv_opa_t y_opa = (y_array[p_act] * LV_OPA_50) / 1000;        // Calculate Y-axis opacity 
+    lv_obj_set_style_bg_color(scr, lv_color_hex(0x0F141F), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir(scr, LV_GRAD_DIR_VER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_color(scr, lv_color_hex(0x05070C), LV_PART_MAIN | LV_STATE_DEFAULT);
 
-        dsc->rect_dsc->bg_color = lv_color_mix(lv_palette_main(LV_PALETTE_RED), // Mix colors 
-                                               lv_palette_main(LV_PALETTE_BLUE),
-                                               x_opa + y_opa);
-    }
-}
+    lv_obj_t *title = lv_label_create(scr);
+    lv_label_set_text(title, "Thermocouple Study");
+    lv_obj_set_style_text_color(title, lv_color_hex(0xE5EAF5), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
 
-static void add_data(lv_timer_t *timer) // Timer callback to add data to the chart 
-{
-    lv_obj_t *chart = timer->user_data;                                                                        // Get the chart associated with the timer 
-    lv_chart_set_next_value2(chart, lv_chart_get_series_next(chart, NULL), lv_rand(0, 200), lv_rand(0, 1000)); // Add random data to the chart 
-}
+    lv_obj_t *subtitle = lv_label_create(scr);
+    lv_label_set_text(subtitle, "Channel Overview (static snapshot)");
+    lv_obj_set_style_text_color(subtitle, lv_color_hex(0x94A3B8), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 46);
 
-// This demo UI is adapted from LVGL official example: https://docs.lvgl.io/master/examples.html#scatter-chart
-void example_lvgl_demo_ui() // LVGL demo UI initialization function 
-{
-    lv_obj_t *scr = lv_scr_act();                                              // Get the current active screen 
-    lv_obj_t *chart = lv_chart_create(scr);                                    // Create a chart object 
-    lv_obj_set_size(chart, 200, 150);                                          // Set chart size 
-    lv_obj_align(chart, LV_ALIGN_CENTER, 0, 0);                                // Center the chart on the screen 
-    lv_obj_add_event_cb(chart, draw_event_cb, LV_EVENT_DRAW_PART_BEGIN, NULL); // Add draw event callback 
-    lv_obj_set_style_line_width(chart, 0, LV_PART_ITEMS);                      /* Remove chart lines  */
+    lv_obj_t *panel = lv_obj_create(scr);
+    lv_obj_set_size(panel, 280, 170);
+    lv_obj_align(panel, LV_ALIGN_CENTER, 0, 30);
+    lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_40, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(panel, lv_color_hex(0x1E293B), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(panel, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(panel, 14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(panel, 16, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    lv_chart_set_type(chart, LV_CHART_TYPE_SCATTER); // Set chart type to scatter 
+    lv_obj_t *channel_a = lv_label_create(panel);
+    lv_label_set_text(channel_a, "Channel A\n• Process Temp: 372.5 degC\n• Junction Temp: 41.2 degC\n• Status: Stable");
+    lv_obj_set_style_text_color(channel_a, lv_color_hex(0xF8FAFC), LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    lv_chart_set_axis_tick(chart, LV_CHART_AXIS_PRIMARY_X, 5, 5, 5, 1, true, 30);  // Set X-axis ticks 
-    lv_chart_set_axis_tick(chart, LV_CHART_AXIS_PRIMARY_Y, 10, 5, 6, 5, true, 50); // Set Y-axis ticks 
+    lv_obj_t *channel_b = lv_label_create(panel);
+    lv_label_set_text(channel_b, "Channel B\n• Process Temp: 185.3 degC\n• Junction Temp: 32.8 degC\n• Status: Monitoring");
+    lv_obj_set_style_text_color(channel_b, lv_color_hex(0xE2E8F0), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(channel_b, LV_ALIGN_TOP_LEFT, 0, 78);
 
-    lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_X, 0, 200);  // Set X-axis range 
-    lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, 0, 1000); // Set Y-axis range 
-
-    lv_chart_set_point_count(chart, 50); // Set the number of points in the chart 
-
-    lv_chart_series_t *ser = lv_chart_add_series(chart, lv_palette_main(LV_PALETTE_RED), LV_CHART_AXIS_PRIMARY_Y); // Add a series to the chart 
-    for (int i = 0; i < 50; i++)
-    {                                                                            // Add random points to the chart 
-        lv_chart_set_next_value2(chart, ser, lv_rand(0, 200), lv_rand(0, 1000)); // Set X and Y values 
-    }
-
-    lv_timer_create(add_data, 100, chart); // Create a timer to add new data every 100ms 
+    lv_obj_t *note = lv_label_create(panel);
+    lv_label_set_text(note, "Notes\n• Study mode active\n• Screen will not auto-refresh");
+    lv_obj_set_style_text_color(note, lv_color_hex(0xCBD5F5), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(note, LV_ALIGN_BOTTOM_LEFT, 0, -10);
 }
 
 #if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_GT911
