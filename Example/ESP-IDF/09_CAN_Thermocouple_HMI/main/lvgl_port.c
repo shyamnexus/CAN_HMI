@@ -17,7 +17,7 @@
 #include "board_i2c.h"
 #include "waveshare_rgb_lcd_port.h"
 
-static const char *TAG = "lv_port";                      // Tag for logging
+//static const char *TAG = "lv_port";                      // Tag for logging
 static SemaphoreHandle_t lvgl_mux;                       // LVGL mutex for synchronization
 static TaskHandle_t lvgl_task_handle = NULL;             // Handle for the LVGL task
 #if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_GT911

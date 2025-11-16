@@ -79,7 +79,7 @@ void app_main(void)
     // Main loop - just monitor system health
     while (1) {
         // Print system info periodically
-        ESP_LOGI(TAG, "System running... Free heap: %lu bytes", esp_get_free_heap_size());
+        ESP_LOGI(TAG, "System running... Free heap: %d bytes", (int)esp_get_free_heap_size());
         
         vTaskDelay(pdMS_TO_TICKS(10000));  // Log every 10 seconds
     }
