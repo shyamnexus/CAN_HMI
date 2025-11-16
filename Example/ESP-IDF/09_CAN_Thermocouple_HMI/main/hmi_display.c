@@ -60,7 +60,7 @@ static lv_obj_t* create_channel_panel(lv_obj_t *parent, uint8_t channel, int x, 
     lv_obj_t *temp_label = lv_label_create(panel);
     lv_obj_align(temp_label, LV_ALIGN_CENTER, 0, -5);
     lv_obj_set_style_text_color(temp_label, COLOR_TEMP_NORMAL, 0);
-    lv_obj_set_style_text_font(temp_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(temp_label, &lv_font_montserrat_14, 0);
     lv_label_set_text(temp_label, "---°C");
     temp_labels[channel] = temp_label;
 
@@ -68,7 +68,7 @@ static lv_obj_t* create_channel_panel(lv_obj_t *parent, uint8_t channel, int x, 
     lv_obj_t *status_label = lv_label_create(panel);
     lv_obj_align(status_label, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_set_style_text_color(status_label, COLOR_INVALID, 0);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_14, 0);
     lv_label_set_text(status_label, "Initializing");
     status_labels[channel] = status_label;
 
@@ -100,7 +100,7 @@ esp_err_t hmi_display_init(void) {
     title_label = lv_label_create(title_bar);
     lv_label_set_text(title_label, "K-Type Thermocouple CAN HMI");
     lv_obj_set_style_text_color(title_label, COLOR_TITLE, 0);
-    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_14, 0);
     lv_obj_align(title_label, LV_ALIGN_LEFT_MID, 10, 0);
 
     // CAN status indicator

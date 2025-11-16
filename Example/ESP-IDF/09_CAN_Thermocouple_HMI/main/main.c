@@ -23,7 +23,7 @@
 #include "can_transmit.h"
 #include "hmi_display.h"
 
-static const char *TAG = "MAIN";
+//static const char *TAG = "MAIN";
 
 void app_main(void)
 {
