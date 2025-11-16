@@ -14,10 +14,16 @@
 #include "esp_log.h"
 #include "lvgl.h"
 #include "lvgl_port.h"
+#include "board_i2c.h"
+#include "waveshare_rgb_lcd_port.h"
 
 static const char *TAG = "lv_port";                      // Tag for logging
 static SemaphoreHandle_t lvgl_mux;                       // LVGL mutex for synchronization
 static TaskHandle_t lvgl_task_handle = NULL;             // Handle for the LVGL task
+#if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_GT911
+static int s_touch_error_count = 0;
+static const int TOUCH_ERROR_THRESHOLD = 5;
+#endif
 
 #if EXAMPLE_LVGL_PORT_ROTATION_DEGREE != 0
 // Function to get the next frame buffer for double buffering
@@ -436,7 +442,25 @@ static void touchpad_read(lv_indev_drv_t *indev_drv, lv_indev_data_t *data)
     uint8_t touchpad_cnt = 0; // Variable for touch count
 
     /* Read data from touch controller into memory */
-    esp_lcd_touch_read_data(tp); // Read data from touch controller
+    esp_err_t touch_err = esp_lcd_touch_read_data(tp); // Read data from touch controller
+    if (touch_err != ESP_OK) {
+        ESP_LOGW(TAG, "Touch read error: %s", esp_err_to_name(touch_err));
+#if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_GT911
+        if (++s_touch_error_count >= TOUCH_ERROR_THRESHOLD) {
+            ESP_LOGW(TAG, "Touch read failed %d times, attempting recovery", s_touch_error_count);
+            if (waveshare_touch_recover() == ESP_OK) {
+                s_touch_error_count = 0;
+            }
+        }
+#endif
+        data->state = LV_INDEV_STATE_RELEASED;
+        return;
+    }
+#if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_GT911
+    if (s_touch_error_count > 0) {
+        s_touch_error_count = 0;
+    }
+#endif
 
     /* Read data from touch controller */
     bool touchpad_pressed = esp_lcd_touch_get_coordinates(tp, &touchpad_x, &touchpad_y, NULL, &touchpad_cnt, 1); // Get touch coordinates

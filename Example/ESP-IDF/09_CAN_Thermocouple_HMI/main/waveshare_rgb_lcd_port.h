@@ -70,4 +70,11 @@ esp_err_t wavesahre_rgb_lcd_bl_off();
 
 void example_lvgl_demo_ui();
 
+#if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_GT911
+/**
+ * @brief Attempt to recover the GT911 touch interface after repeated I2C errors.
+ */
+esp_err_t waveshare_touch_recover(void);
+#endif
+
 #endif
