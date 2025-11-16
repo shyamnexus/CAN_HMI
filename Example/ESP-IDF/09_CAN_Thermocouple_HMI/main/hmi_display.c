@@ -20,6 +20,8 @@ static lv_obj_t *temp_labels[MAX_THERMOCOUPLE_CHANNELS];
 static lv_obj_t *status_labels[MAX_THERMOCOUPLE_CHANNELS];
 static lv_obj_t *can_status_label;
 static lv_obj_t *can_status_led;
+static lv_obj_t *hello_message_label;
+static lv_timer_t *hello_message_timer;
 
 static TaskHandle_t hmi_update_task_handle = NULL;
 
@@ -32,6 +34,9 @@ static TaskHandle_t hmi_update_task_handle = NULL;
 #define COLOR_TEMP_WARNING  lv_color_hex(0xFF9800)
 #define COLOR_TEMP_DANGER   lv_color_hex(0xF44336)
 #define COLOR_INVALID       lv_color_hex(0x757575)
+
+static void hello_message_timeout_cb(lv_timer_t *timer);
+static void hello_button_event_cb(lv_event_t * e);
 
 /**
  * @brief Create temperature channel panel
@@ -116,6 +121,24 @@ esp_err_t hmi_display_init(void) {
     lv_obj_set_style_text_color(can_status_label, COLOR_TITLE, 0);
     lv_obj_set_style_text_font(can_status_label, &lv_font_montserrat_14, 0);
     lv_obj_align(can_status_label, LV_ALIGN_RIGHT_MID, -10, 0);
+
+    // Hello button on title bar
+    lv_obj_t *hello_button = lv_btn_create(title_bar);
+    lv_obj_set_size(hello_button, 90, 32);
+    lv_obj_align(hello_button, LV_ALIGN_RIGHT_MID, -150, 0);
+    lv_obj_add_event_cb(hello_button, hello_button_event_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *hello_btn_label = lv_label_create(hello_button);
+    lv_label_set_text(hello_btn_label, "Hello");
+    lv_obj_center(hello_btn_label);
+
+    // Hidden message label (appears for 5 seconds)
+    hello_message_label = lv_label_create(screen);
+    lv_label_set_text(hello_message_label, "");
+    lv_obj_set_style_text_color(hello_message_label, COLOR_TITLE, 0);
+    lv_obj_set_style_text_font(hello_message_label, &lv_font_montserrat_18, 0);
+    lv_obj_align(hello_message_label, LV_ALIGN_TOP_MID, 0, 70);
+    lv_obj_add_flag(hello_message_label, LV_OBJ_FLAG_HIDDEN);
 
     // Create scrollable container for channels
     lv_obj_t *channel_container = lv_obj_create(screen);
@@ -254,4 +277,31 @@ esp_err_t hmi_display_start_update_task(void) {
 
     ESP_LOGI(TAG, "HMI update task created");
     return ESP_OK;
+}
+
+static void hello_message_timeout_cb(lv_timer_t *timer) {
+    LV_UNUSED(timer);
+    if (hello_message_label) {
+        lv_obj_add_flag(hello_message_label, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (hello_message_timer) {
+        lv_timer_del(hello_message_timer);
+        hello_message_timer = NULL;
+    }
+}
+
+static void hello_button_event_cb(lv_event_t * e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED || hello_message_label == NULL) {
+        return;
+    }
+
+    lv_label_set_text(hello_message_label, "Hello Shyam");
+    lv_obj_clear_flag(hello_message_label, LV_OBJ_FLAG_HIDDEN);
+
+    if (hello_message_timer) {
+        lv_timer_reset(hello_message_timer);
+    } else {
+        hello_message_timer = lv_timer_create(hello_message_timeout_cb, 5000, NULL);
+    }
 }
