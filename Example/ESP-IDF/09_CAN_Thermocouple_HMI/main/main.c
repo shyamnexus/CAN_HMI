@@ -21,7 +21,6 @@
 #include "lvgl_port.h"
 #include "thermocouple.h"
 #include "can_transmit.h"
-#include "hmi_display.h"
 
 //static const char *TAG = "MAIN";
 
@@ -46,6 +45,12 @@ void app_main(void)
     ESP_LOGI(TAG, "LCD and LVGL initialized successfully");
 
     // Initialize thermocouple interface
+    // Render static study screen
+    ESP_LOGI(TAG, "Rendering static study screen...");
+    example_lvgl_demo_ui();
+    ESP_LOGI(TAG, "Static study screen rendered");
+
+    // Initialize thermocouple interface (still running in background)
     ESP_LOGI(TAG, "Initializing thermocouple interface...");
     ESP_ERROR_CHECK(thermocouple_init());
     ESP_LOGI(TAG, "Thermocouple interface initialized");
@@ -55,16 +60,8 @@ void app_main(void)
     ESP_ERROR_CHECK(can_init());
     ESP_LOGI(TAG, "CAN interface initialized");
 
-    // Initialize HMI display
-    ESP_LOGI(TAG, "Creating HMI interface...");
-    ESP_ERROR_CHECK(hmi_display_init());
-    ESP_LOGI(TAG, "HMI interface created");
-
     // Start background tasks
     ESP_LOGI(TAG, "Starting background tasks...");
-    
-    // Start HMI update task
-    ESP_ERROR_CHECK(hmi_display_start_update_task());
     
     // Start CAN transmission task
     ESP_ERROR_CHECK(can_start_transmission_task());
