@@ -1,7 +1,7 @@
 #pragma once
 
 #include "esp_err.h"
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -11,8 +11,6 @@ extern "C" {
 #define I2C_MASTER_SDA_IO           8
 #define I2C_MASTER_NUM              0
 #define I2C_MASTER_FREQ_HZ          100000
-#define I2C_MASTER_TX_BUF_DISABLE   0
-#define I2C_MASTER_RX_BUF_DISABLE   0
 #define I2C_MASTER_TIMEOUT_MS       1000
 
 /**
@@ -39,6 +37,21 @@ esp_err_t board_i2c_recover(void);
  * @return ESP_OK if the device ACKs, error code otherwise
  */
 esp_err_t board_i2c_probe_device(uint8_t addr);
+
+/**
+ * @brief Get the shared I2C master bus handle.
+ */
+esp_err_t board_i2c_get_bus(i2c_master_bus_handle_t *out_bus);
+
+/**
+ * @brief Write arbitrary bytes to a device on the shared bus.
+ */
+esp_err_t board_i2c_write(uint8_t addr, const uint8_t *data, size_t len);
+
+/**
+ * @brief Convenience helper to send a single byte command.
+ */
+esp_err_t board_i2c_write_byte(uint8_t addr, uint8_t byte);
 
 #ifdef __cplusplus
 }

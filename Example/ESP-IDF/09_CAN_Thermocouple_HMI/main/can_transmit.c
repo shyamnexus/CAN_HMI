@@ -6,7 +6,6 @@
 #include "can_transmit.h"
 #include "esp_log.h"
 #include "driver/twai.h"
-#include "driver/i2c.h"
 #include "esp_check.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -38,13 +37,13 @@ static TaskHandle_t can_tx_task_handle = NULL;
  */
 static esp_err_t i2c_write_with_recovery(uint8_t addr, uint8_t data)
 {
-    esp_err_t ret = i2c_master_write_to_device(I2C_MASTER_NUM, addr, &data, 1, I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+    esp_err_t ret = board_i2c_write_byte(addr, data);
     if (ret == ESP_OK) {
         return ret;
     }
     ESP_LOGW(TAG, "I2C write to 0x%02X failed: %s. Attempting bus recovery.", addr, esp_err_to_name(ret));
     ESP_RETURN_ON_ERROR(board_i2c_recover(), TAG, "Unable to recover I2C bus");
-    return i2c_master_write_to_device(I2C_MASTER_NUM, addr, &data, 1, I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+    return board_i2c_write_byte(addr, data);
 }
 
 static esp_err_t enable_can_transceiver(void) {
