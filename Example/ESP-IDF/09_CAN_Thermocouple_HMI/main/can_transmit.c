@@ -7,21 +7,12 @@
 #include "esp_log.h"
 #include "driver/twai.h"
 #include "driver/i2c.h"
-#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "board_i2c.h"
 #include <string.h>
 
 static const char *TAG = "CAN_TX";
-
-// I2C configuration for Waveshare board (for CAN transceiver enable)
-#define I2C_MASTER_SCL_IO           9
-#define I2C_MASTER_SDA_IO           8
-#define I2C_MASTER_NUM              0
-#define I2C_MASTER_FREQ_HZ          400000
-#define I2C_MASTER_TX_BUF_DISABLE   0
-#define I2C_MASTER_RX_BUF_DISABLE   0
-#define I2C_MASTER_TIMEOUT_MS       1000
 
 // CAN/TWAI configuration
 #ifndef CONFIG_EXAMPLE_TX_GPIO_NUM
@@ -38,31 +29,6 @@ static const char *TAG = "CAN_TX";
 
 static bool can_initialized = false;
 static TaskHandle_t can_tx_task_handle = NULL;
-
-/**
- * @brief Initialize I2C for CAN transceiver control
- */
-static esp_err_t i2c_master_init(void) {
-    int i2c_master_port = I2C_MASTER_NUM;
-    
-    i2c_config_t conf = {
-        .mode = I2C_MODE_MASTER,
-        .sda_io_num = I2C_MASTER_SDA_IO,
-        .scl_io_num = I2C_MASTER_SCL_IO,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = I2C_MASTER_FREQ_HZ,
-    };
-    
-    esp_err_t ret = i2c_param_config(i2c_master_port, &conf);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-    
-    return i2c_driver_install(i2c_master_port, conf.mode, 
-                             I2C_MASTER_RX_BUF_DISABLE, 
-                             I2C_MASTER_TX_BUF_DISABLE, 0);
-}
 
 /**
  * @brief Enable CAN transceiver on Waveshare board
@@ -95,7 +61,7 @@ esp_err_t can_init(void) {
     }
 
     // Initialize I2C for CAN transceiver control
-    ESP_ERROR_CHECK(i2c_master_init());
+    ESP_ERROR_CHECK(board_i2c_init());
     ESP_LOGI(TAG, "I2C initialized");
     
     // Enable CAN transceiver
