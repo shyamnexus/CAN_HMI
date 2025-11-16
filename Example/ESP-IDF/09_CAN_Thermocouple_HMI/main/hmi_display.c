@@ -132,14 +132,6 @@ esp_err_t hmi_display_init(void) {
     lv_label_set_text(hello_btn_label, "Hello");
     lv_obj_center(hello_btn_label);
 
-    // Hidden message label (appears for 5 seconds)
-    hello_message_label = lv_label_create(screen);
-    lv_label_set_text(hello_message_label, "");
-    lv_obj_set_style_text_color(hello_message_label, COLOR_TITLE, 0);
-    lv_obj_set_style_text_font(hello_message_label, &lv_font_montserrat_18, 0);
-    lv_obj_align(hello_message_label, LV_ALIGN_TOP_MID, 0, 70);
-    lv_obj_add_flag(hello_message_label, LV_OBJ_FLAG_HIDDEN);
-
     // Create scrollable container for channels
     lv_obj_t *channel_container = lv_obj_create(screen);
     lv_obj_set_size(channel_container, LV_PCT(100), 430);
@@ -163,6 +155,15 @@ esp_err_t hmi_display_init(void) {
         
         channel_panels[i] = create_channel_panel(channel_container, i, x, y);
     }
+
+    // Hidden message label (appears for 5 seconds)
+    hello_message_label = lv_label_create(screen);
+    lv_label_set_text(hello_message_label, "");
+    lv_obj_set_style_text_color(hello_message_label, COLOR_TITLE, 0);
+    lv_obj_set_style_text_font(hello_message_label, &lv_font_montserrat_18, 0);
+    lv_obj_align(hello_message_label, LV_ALIGN_TOP_MID, 0, 70);
+    lv_obj_add_flag(hello_message_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(hello_message_label);
 
     // Load the screen
     lv_scr_load(screen);
