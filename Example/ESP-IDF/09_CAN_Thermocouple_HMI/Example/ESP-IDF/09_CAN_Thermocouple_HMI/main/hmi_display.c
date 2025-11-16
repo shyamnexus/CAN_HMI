@@ -20,6 +20,8 @@ static lv_obj_t *temp_labels[MAX_THERMOCOUPLE_CHANNELS];
 static lv_obj_t *status_labels[MAX_THERMOCOUPLE_CHANNELS];
 static lv_obj_t *can_status_label;
 static lv_obj_t *can_status_led;
+static lv_obj_t *greeting_label;
+static lv_timer_t *greeting_timer;
 
 static TaskHandle_t hmi_update_task_handle = NULL;
 
@@ -32,6 +34,28 @@ static TaskHandle_t hmi_update_task_handle = NULL;
 #define COLOR_TEMP_WARNING  lv_color_hex(0xFF9800)
 #define COLOR_TEMP_DANGER   lv_color_hex(0xF44336)
 #define COLOR_INVALID       lv_color_hex(0x757575)
+
+static void greeting_timer_cb(lv_timer_t *timer)
+{
+    LV_UNUSED(timer);
+    if (greeting_label != NULL) {
+        lv_obj_add_flag(greeting_label, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (greeting_timer != NULL) {
+        lv_timer_pause(greeting_timer);
+    }
+}
+
+static void greeting_button_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED || greeting_label == NULL || greeting_timer == NULL) {
+        return;
+    }
+    lv_label_set_text(greeting_label, "Hello Shyam");
+    lv_obj_clear_flag(greeting_label, LV_OBJ_FLAG_HIDDEN);
+    lv_timer_resume(greeting_timer);
+    lv_timer_reset(greeting_timer);
+}
 
 /**
  * @brief Create temperature channel panel
@@ -117,10 +141,31 @@ esp_err_t hmi_display_init(void) {
     lv_obj_set_style_text_font(can_status_label, &lv_font_montserrat_14, 0);
     lv_obj_align(can_status_label, LV_ALIGN_RIGHT_MID, -10, 0);
 
+    lv_obj_t *greet_btn = lv_btn_create(title_bar);
+    lv_obj_set_size(greet_btn, 90, 32);
+    lv_obj_align(greet_btn, LV_ALIGN_RIGHT_MID, -170, 0);
+    lv_obj_add_event_cb(greet_btn, greeting_button_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *greet_btn_label = lv_label_create(greet_btn);
+    lv_label_set_text(greet_btn_label, "Greet");
+    lv_obj_center(greet_btn_label);
+
+    greeting_label = lv_label_create(screen);
+    lv_label_set_text(greeting_label, "");
+    lv_obj_set_style_text_color(greeting_label, COLOR_TITLE, 0);
+    lv_obj_set_style_bg_color(greeting_label, lv_color_hex(0x374151), 0);
+    lv_obj_set_style_bg_opa(greeting_label, LV_OPA_70, 0);
+    lv_obj_set_style_radius(greeting_label, 10, 0);
+    lv_obj_set_style_pad_all(greeting_label, 8, 0);
+    lv_obj_align(greeting_label, LV_ALIGN_TOP_MID, 0, 60);
+    lv_obj_add_flag(greeting_label, LV_OBJ_FLAG_HIDDEN);
+
+    greeting_timer = lv_timer_create(greeting_timer_cb, 5000, NULL);
+    lv_timer_pause(greeting_timer);
+
     // Create scrollable container for channels
     lv_obj_t *channel_container = lv_obj_create(screen);
-    lv_obj_set_size(channel_container, LV_PCT(100), 430);
-    lv_obj_set_pos(channel_container, 0, 50);
+    lv_obj_set_size(channel_container, LV_PCT(100), 400);
+    lv_obj_set_pos(channel_container, 0, 90);
     lv_obj_set_style_bg_color(channel_container, COLOR_BACKGROUND, 0);
     lv_obj_set_style_border_width(channel_container, 0, 0);
     lv_obj_set_style_pad_all(channel_container, 5, 0);
@@ -228,7 +273,7 @@ static void hmi_update_task(void *arg) {
         // Read all thermocouple channels
         if (thermocouple_read_all(temp_data, MAX_THERMOCOUPLE_CHANNELS) == ESP_OK) {
             // Update display
-            //hmi_display_update_all(temp_data, MAX_THERMOCOUPLE_CHANNELS);
+            hmi_display_update_all(temp_data, MAX_THERMOCOUPLE_CHANNELS);
             
             // Update CAN status (assume connected if no errors)
             hmi_display_update_can_status(true);
