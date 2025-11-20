@@ -29,6 +29,12 @@ static uint8_t admin_selected_index = 0;
 
 static TaskHandle_t hmi_update_task_handle = NULL;
 
+// Deferred update tracking when the admin screen is active
+static bool pending_channel_updates[MAX_THERMOCOUPLE_CHANNELS];
+static thermocouple_data_t pending_channel_data[MAX_THERMOCOUPLE_CHANNELS];
+static bool pending_can_status_update = false;
+static bool pending_can_status_value = false;
+
 
 
 // Color scheme
@@ -60,6 +66,12 @@ static void admin_adjust_value(int delta);
 static void admin_enter_action(void);
 static void show_main_screen(void);
 static void show_admin_screen(void);
+static bool is_admin_screen_active_locked(void);
+static void cache_channel_update(uint8_t channel, const thermocouple_data_t *data);
+static void cache_can_status_update(bool connected);
+static void apply_pending_main_screen_updates_locked(void);
+static void update_channel_ui_locked(uint8_t channel, const thermocouple_data_t *data);
+static void update_can_status_ui_locked(bool connected);
 
 /**
  * @brief Create temperature channel panel
@@ -207,37 +219,19 @@ void hmi_display_update_channel(uint8_t channel, thermocouple_data_t *data) {
         return;
     }
 
-    // Lock LVGL mutex
     if (!lvgl_port_lock(100)) {
         return;
     }
 
-    // Update temperature label
-    if (data->is_valid) {
-        char temp_text[32];
-        snprintf(temp_text, sizeof(temp_text), "%.1f°C", data->temperature);
-        lv_label_set_text(temp_labels[channel], temp_text);
-
-        // Set color based on temperature
-        lv_color_t color;
-        if (data->temperature < 0 || data->temperature > 150) {
-            color = COLOR_TEMP_DANGER;
-            lv_label_set_text(status_labels[channel], "Out of Range");
-        } else if (data->temperature > 100) {
-            color = COLOR_TEMP_WARNING;
-            lv_label_set_text(status_labels[channel], "High Temp");
-        } else {
-            color = COLOR_TEMP_NORMAL;
-            lv_label_set_text(status_labels[channel], "Normal");
-        }
-        lv_obj_set_style_text_color(temp_labels[channel], color, 0);
-    } else {
-        lv_label_set_text(temp_labels[channel], "---°C");
-        lv_obj_set_style_text_color(temp_labels[channel], COLOR_INVALID, 0);
-        lv_label_set_text(status_labels[channel], "Invalid");
+    if (is_admin_screen_active_locked()) {
+        cache_channel_update(channel, data);
+        lvgl_port_unlock();
+        return;
     }
 
-    // Unlock LVGL mutex
+    apply_pending_main_screen_updates_locked();
+    update_channel_ui_locked(channel, data);
+
     lvgl_port_unlock();
 }
 
@@ -252,18 +246,19 @@ void hmi_display_update_all(thermocouple_data_t *data, uint8_t num_channels) {
 }
 
 void hmi_display_update_can_status(bool connected) {
-    // Lock LVGL mutex
     if (!lvgl_port_lock(100)) {
         return;
     }
 
-    if (connected) {
-        lv_obj_set_style_bg_color(can_status_led, lv_color_hex(0x4CAF50), 0); // Green
-    } else {
-        lv_obj_set_style_bg_color(can_status_led, lv_color_hex(0xF44336), 0); // Red
+    if (is_admin_screen_active_locked()) {
+        cache_can_status_update(connected);
+        lvgl_port_unlock();
+        return;
     }
 
-    // Unlock LVGL mutex
+    apply_pending_main_screen_updates_locked();
+    update_can_status_ui_locked(connected);
+
     lvgl_port_unlock();
 }
 
@@ -279,7 +274,7 @@ static void hmi_update_task(void *arg) {
         // Read all thermocouple channels
         if (thermocouple_read_all(temp_data, MAX_THERMOCOUPLE_CHANNELS) == ESP_OK) {
             // Update display
-            //hmi_display_update_all(temp_data, MAX_THERMOCOUPLE_CHANNELS);
+            hmi_display_update_all(temp_data, MAX_THERMOCOUPLE_CHANNELS);
             
             // Update CAN status (assume connected if no errors)
             hmi_display_update_can_status(true);
@@ -516,13 +511,99 @@ static void admin_enter_action(void) {
 }
 
 static void show_main_screen(void) {
-    if (main_screen) {
+    if (!main_screen) {
+        return;
+    }
+
+    if (lv_scr_act() != main_screen) {
         lv_scr_load(main_screen);
     }
+
+    apply_pending_main_screen_updates_locked();
 }
 
 static void show_admin_screen(void) {
-    if (admin_screen) {
-        lv_scr_load(admin_screen);
+    if (!admin_screen || lv_scr_act() == admin_screen) {
+        return;
     }
+
+    lv_scr_load(admin_screen);
+}
+
+static bool is_admin_screen_active_locked(void) {
+    return admin_screen && (lv_scr_act() == admin_screen);
+}
+
+static void cache_channel_update(uint8_t channel, const thermocouple_data_t *data) {
+    if (channel >= MAX_THERMOCOUPLE_CHANNELS || data == NULL) {
+        return;
+    }
+
+    pending_channel_data[channel] = *data;
+    pending_channel_updates[channel] = true;
+}
+
+static void cache_can_status_update(bool connected) {
+    pending_can_status_value = connected;
+    pending_can_status_update = true;
+}
+
+static void apply_pending_main_screen_updates_locked(void) {
+    if (is_admin_screen_active_locked()) {
+        return;
+    }
+
+    for (uint8_t i = 0; i < MAX_THERMOCOUPLE_CHANNELS; i++) {
+        if (pending_channel_updates[i]) {
+            pending_channel_updates[i] = false;
+            update_channel_ui_locked(i, &pending_channel_data[i]);
+        }
+    }
+
+    if (pending_can_status_update) {
+        pending_can_status_update = false;
+        update_can_status_ui_locked(pending_can_status_value);
+    }
+}
+
+static void update_channel_ui_locked(uint8_t channel, const thermocouple_data_t *data) {
+    if (channel >= MAX_THERMOCOUPLE_CHANNELS || data == NULL) {
+        return;
+    }
+
+    if (!temp_labels[channel] || !status_labels[channel]) {
+        return;
+    }
+
+    if (data->is_valid) {
+        char temp_text[32];
+        snprintf(temp_text, sizeof(temp_text), "%.1f°C", data->temperature);
+        lv_label_set_text(temp_labels[channel], temp_text);
+
+        lv_color_t color;
+        if (data->temperature < 0 || data->temperature > 150) {
+            color = COLOR_TEMP_DANGER;
+            lv_label_set_text(status_labels[channel], "Out of Range");
+        } else if (data->temperature > 100) {
+            color = COLOR_TEMP_WARNING;
+            lv_label_set_text(status_labels[channel], "High Temp");
+        } else {
+            color = COLOR_TEMP_NORMAL;
+            lv_label_set_text(status_labels[channel], "Normal");
+        }
+        lv_obj_set_style_text_color(temp_labels[channel], color, 0);
+    } else {
+        lv_label_set_text(temp_labels[channel], "---°C");
+        lv_obj_set_style_text_color(temp_labels[channel], COLOR_INVALID, 0);
+        lv_label_set_text(status_labels[channel], "Invalid");
+    }
+}
+
+static void update_can_status_ui_locked(bool connected) {
+    if (!can_status_led) {
+        return;
+    }
+
+    lv_color_t color = connected ? lv_color_hex(0x4CAF50) : lv_color_hex(0xF44336);
+    lv_obj_set_style_bg_color(can_status_led, color, 0);
 }
