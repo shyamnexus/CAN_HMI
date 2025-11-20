@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 static const char *TAG = "HMI_DISPLAY";
+#define ADMIN_INPUT_COUNT 5
 
 // LVGL objects
 static lv_obj_t *main_screen;
@@ -28,7 +29,7 @@ static uint8_t admin_selected_index = 0;
 
 static TaskHandle_t hmi_update_task_handle = NULL;
 
-#define ADMIN_INPUT_COUNT 5
+
 
 // Color scheme
 #define COLOR_BACKGROUND    lv_color_hex(0x1E1E1E)
